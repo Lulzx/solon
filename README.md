@@ -70,14 +70,15 @@ interpretability is worth as much as the score.
 ## Honest limitations
 
 - **Toy corpus.** A synthetic mini-English. The mechanisms are real; the scale
-  is not. Real text needs sub-word units, a chart/Earley parser over the induced
-  grammar, and variable-slot constructions (not just flat categories).
+  is not. Real text needs sub-word units (RePair seq now exposed + light tuple support
+  in classes/grammar), a chart/Earley parser over the induced grammar (CKY bits
+  implemented), and variable-slot constructions (not just flat categories; next).
 - **Agreement is captured via adjacent class bigrams.** Long-distance
   dependencies (across embedded clauses) need the hierarchical / slot-binding
   parser — that is the next rung.
 - **Clustering threshold** is tuned for this world (0.46, complete-linkage).
-  At scale, replace the threshold with an MDL stopping criterion: merge iff it
-  shortens the total description length.
+  Now supported: `mdl=True` uses a cheap MDL proxy (class model cost + fit) to
+  decide merges (see code + solon_tinystories call). Full joint MDL is future work.
 
 ## Sub-word edition: morphology by compression (`solon_morphology.py`)
 
@@ -166,5 +167,9 @@ class. The rest of SOLON re-implements classic MDL/distributional acquisition
 Swap `make_corpus()` for a loader over the strict-small 10M-word corpus, move
 the predictor to character/sub-word PPM (robust to morphology — real wug tests),
 and add a CKY parser so grammaticality uses minimum-description-length parses
-rather than class bigrams. The eval pipeline (BLiMP, EWOK, reading-time) drops
-in 2026; bits-per-word is already the right currency for the reading-time fit.
+rather than class bigrams (now available via `ConstructionGrammar(..., use_chart=True).bits`).
+Clustering now supports `mdl=True` (MDL delta stopping: merge iff it shortens approx DL;
+see `induce_classes(..., mdl=True)`). RePair seq is exposed for subword experiments.
+The eval pipeline (BLiMP, EWOK, reading-time) drops in 2026; bits-per-word is already
+the right currency for the reading-time fit. Run with larger n_words / mdl / chart
+flags for scaled experiments (e.g. `python solon_tinystories.py ... 4000000`).
