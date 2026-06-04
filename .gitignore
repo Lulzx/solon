@@ -1,4 +1,5 @@
 __pycache__/
 *.pyc
+# training data (downloaded at runtime, not committed)
 tinystories-valid.txt
-*.txt
+tinystories*.txt

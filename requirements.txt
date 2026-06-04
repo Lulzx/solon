@@ -1,0 +1,4 @@
+# SOLON runs on the Python standard library alone.
+# tqdm is optional -- only for progress bars in the TinyStories / morphology
+# demos. The code degrades gracefully (no bars) if it is not installed.
+tqdm>=4.0
