@@ -1,0 +1,49 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Compile all sources
+        run: python -m compileall -q solon.py solon_tinystories.py solon_morphology.py
+
+      - name: Run self-contained demo (solon.py)
+        run: python solon.py
+
+      - name: Check the headline results hold
+        run: |
+          python - <<'PY'
+          import solon
+          # categories must separate number; one-shot must land 'blicket' in N.sg
+          _, toks = solon.make_corpus(4000, seed=1)
+          classes, assigned, vecs, idf = solon.induce_classes(toks)
+          labels = {solon.guess_label(c) for c in classes if len(c) >= 2}
+          assert {"N.sg", "N.pl", "V.sg", "V.pl"} <= labels, labels
+          cg = solon.ConstructionGrammar(toks, assigned)
+          cls, sim = cg.learn_word_oneshot("blicket", "the blicket runs .".split(), vecs, idf)
+          members = [w for w, c in assigned.items() if c == cls]
+          assert solon.guess_label(members) == "N.sg", solon.guess_label(members)
+          # one-shot agreement: grammatical form must cost fewer bits
+          good = cg.bits("the blicket sleeps .".split())
+          bad = cg.bits("the blicket sleep .".split())
+          assert good < bad, (good, bad)
+          print("OK: categories, one-shot classification, and agreement all hold.")
+          PY

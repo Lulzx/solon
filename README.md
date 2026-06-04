@@ -1,5 +1,8 @@
 # SOLON — learning language by compression
 
+[![ci](https://github.com/Lulzx/solon/actions/workflows/ci.yml/badge.svg)](https://github.com/Lulzx/solon/actions/workflows/ci.yml)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 **No transformer. No backpropagation. No gradients anywhere.**
 
 A working proof-of-concept for the thesis that *learning **is** compression*
