@@ -424,10 +424,6 @@ def main():
     print("[4] GRAMMATICALITY = FEWER BITS  (BLiMP-style minimal pairs)")
     pairs = minimal_pairs(random.Random(7), n=400)
     cg = ConstructionGrammar(train_tokens, assigned)
-    for name, scorer in [("statistical (back-off LM)", lambda s: lm.sentence_total(s)),
-                         ("construction grammar      ", cg.bits)]:
-        pass
-    # statistical scorer
     lm_score = lambda s: sum(b for _, b in lm.sentence_bits(s))
     for name, scorer in [("statistical back-off LM ", lm_score),
                          ("construction grammar    ", cg.bits)]:
