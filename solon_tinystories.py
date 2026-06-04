@@ -21,7 +21,7 @@ import collections
 
 import solon                       # reuse the core: CompressionLM, repair, etc.
 from solon import (CompressionLM, repair, expand, induce_classes,
-                   ConstructionGrammar, guess_label, END)
+                   ConstructionGrammar, guess_label, END, grammar_ppl, minimal_pairs)
 
 WORD = re.compile(r"[a-z]+'?[a-z]*")
 SENT_SPLIT = re.compile(r"[.!?]+")
@@ -55,7 +55,7 @@ def main():
 
     banner("=")
     print("SOLON on TinyStories  -  learning real text by compression")
-    print("                         (no transformer, no backprop)")
+    print(f"                         (no transformer, no backprop; n_words~{n_words})")
     banner("=")
 
     t0 = time.time()
@@ -86,7 +86,7 @@ def main():
     print("[2] CONSTRUCTION LIBRARY (RePair chunks that shrink the corpus)")
     t0 = time.time()
     rep_tokens = train_tokens[:300_000]
-    rules, _ = repair(rep_tokens, max_rules=400, progress=True)
+    rules, repaired = repair(rep_tokens, max_rules=400, progress=True)  # repaired seq is subword (NTs + terms)
     chunks = sorted(((len(expand(nt, rules)), expand(nt, rules)) for nt in rules),
                     reverse=True)
     seen, shown = set(), 0
@@ -99,13 +99,16 @@ def main():
         if shown >= 12:
             break
     print(f"    ({time.time()-t0:.1f}s)")
+    # Subword integration note (RePair "construction library" rung; seq available
+    # for induce_classes/CG in future -- treat NT tuples as atomic symbols).
+    print(f"    (subword: RePair produced compacted seq of len {len(repaired)}; e.g. first few mixed: {repaired[:6]})")
 
     # --- 3. induced categories -------------------------------------------
     banner()
-    print("[3] INDUCED CATEGORIES (top words merged by shared context)")
+    print("[3] INDUCED CATEGORIES (top words merged by shared context; mdl=True uses DL stopping)")
     t0 = time.time()
     classes, assigned, vecs, idf = induce_classes(
-        train_tokens, min_count=40, thresh=0.20, top_k=300, progress=True)
+        train_tokens, min_count=40, thresh=0.20, top_k=300, progress=True, mdl=True)  # MDL stopping per README (merge iff shortens DL)
     # show the largest, most coherent classes
     freq = collections.Counter(train_tokens)
     classes_sorted = sorted(classes, key=lambda c: -sum(freq[w] for w in c))
@@ -123,6 +126,7 @@ def main():
     banner()
     print("[4] ONE-SHOT WORD LEARNING (productivity)")
     cg = ConstructionGrammar(train_tokens, assigned)
+    cg_chart = ConstructionGrammar(train_tokens, assigned, use_chart=True)
     nonce = [("zorp", "the zorp was happy".split()),
              ("glip", "she wanted to glip".split()),
              ("blicket", "he saw a blicket".split())]
@@ -147,17 +151,34 @@ def main():
         ("pronoun",   "the girl said she was sad", "the girl said she were sad"),
     ]
     score = lambda s: sum(b for _, b in lm.sentence_bits(s.split() + [END]))
-    correct = 0
+    score_cg = cg.bits
+    score_chart = cg_chart.bits  # will use parse_bits internally
+    # demo generalized minimal_pairs on real heldout sents (more evals)
+    auto_pairs = minimal_pairs(random.Random(99), n=8, sents=test_sents[:300])
+    correct = correct_cg = correct_chart = 0
     for kind, good, bad in pairs:
         m = score(bad) - score(good)
         ok = m > 0
         correct += ok
-        print(f"        {kind:<10} {good:<24} > {bad:<24} {m:+6.1f} b  {'ok' if ok else 'X'}")
-    print(f"    accuracy: {correct}/{len(pairs)}")
+        m_cg = score_cg(bad.split() + [END]) - score_cg(good.split() + [END])
+        ok_cg = m_cg > 0
+        correct_cg += ok_cg
+        m_chart = score_chart(bad.split() + [END]) - score_chart(good.split() + [END])
+        ok_chart = m_chart > 0
+        correct_chart += ok_chart
+        print(f"        {kind:<10} {good:<24} > {bad:<24} LM{m:+6.1f}b CG{m_cg:+6.1f}b chart{m_chart:+6.1f}b")
+    print(f"    accuracy: LM {correct}/{len(pairs)}  CG {correct_cg}/{len(pairs)}  chart {correct_chart}/{len(pairs)}")
+    # extra: grammar "ppl" on heldout using the scorers (lower better)
+    test_for_ppl = test_sents[:200]
+    lm_ppl = grammar_ppl(lambda s: sum(b for _, b in lm.sentence_bits(s)), test_for_ppl)
+    cg_ppl = grammar_ppl(cg.bits, test_for_ppl)
+    chart_ppl = grammar_ppl(cg_chart.bits, test_for_ppl)
+    print(f"    grammar ppl (on {len(test_for_ppl)} heldout sents): LM {lm_ppl:.1f}  CG {cg_ppl:.1f}  chart {chart_ppl:.1f}")
 
     banner("=")
-    print("Real text, ~1M words. Categories, phrases and one-shot generalization")
+    print(f"Real text, ~{n_words:,} words (full file supported). Categories, phrases and one-shot generalization")
     print("emerged from counting and refactoring alone -- no gradients.")
+    print("(extensions: mdl stopping in clustering, chart/CKY parser bits, RePair subword exposure, more evals)")
     banner("=")
 
 
