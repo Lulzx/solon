@@ -102,13 +102,64 @@ python3 solon_morphology.py        # ~2s on 1.2M chars of TinyStories
   inflect lives in the **word-level categories** (`solon.py` §3). Form (sub-word)
   and *when* (word-level) are complementary — the full system needs both.
 
+## Form/when fusion: context-sensitive morphology (`solon_fusion.py`)
+
+The two levels above each fail at one thing. The char model learns the *form*
+of the plural (`-s`) but not *when* to apply it — given "two ___" it keeps the
+shorter bare form (`solon_morphology.py` §4). The word level knows *when*
+(number is licensed by "two") but is blind to a novel word's spelling. This
+fuses them into one factored code length:
+
+```
+P(number, surface | prev, stem) = P(number | prev)        # WHEN  (word-level)
+                                · P(surface | number, stem) # FORM  (char-level)
+```
+
+- **WHEN** is learned by counting — `P(+s marked | prev)` comes out as
+  `two`→0.94, `many`→0.91, `the`→0.11, `a`/`one`→0.00. No labels.
+- **FORM** is a *realization distribution*: given you're marking, the char model
+  picks the allomorph (`dax`→`daxes`, not `daxs`), normalized so it doesn't pay
+  the raw string-length penalty that made §4 keep the bare form. The productive
+  plural is one rule, not re-derived per word.
+- Number marking itself is bootstrapped unsupervised from the `+s`/`+es`
+  alternation: `w` is "marked" iff `w = stem(+e)s` and the stem is also in vocab.
+
+```
+python3 solon_fusion.py        # needs tinystories-valid.txt
+```
+
+**Result — context-sensitive inflection of words seen zero times:**
+
+```
+wug      ->  a wug      | two wugs
+dax      ->  a dax      | two daxes       <- char model spells the allomorph
+number-marking accuracy over 40 (novel stem x cue) decisions: 40/40 = 100%
+```
+
+Neither level alone can do this: char-only is context-blind *and* would misspell
+`daxs`; word-only can't spell an unseen word at all. **Honest limit:** the same
+mechanism only weakly predicts verb agreement — `P(+s|she)=0.32 > P(+s|they)=0.00`
+is directionally right, but below 0.5 because high-frequency irregular verbs
+(`was`, `had`, `went`) carry no `-s` and dilute the cue. Determiner number is
+clean; pronoun-cued agreement is genuinely harder from raw counts.
+
+**Is this novel?** The *ingredients* aren't (factored language models,
+two-level morphology, unsupervised morphology induction all exist). The
+*demonstration* is: an unsupervised, backprop-free factored morphology model
+that bootstraps number from the `+s` alternation and resolves novel-word
+agreement that neither the sub-word nor the word level can alone — packaged as a
+single MDL code length. It's a synthesis, honestly scoped, not a new algorithm
+class. The rest of SOLON re-implements classic MDL/distributional acquisition
+(RePair, ADIOS, Guo 2001) and is intended as a clean baseline.
+
 ## Files
 
 - `solon.py` — core system (toy corpus, predictor, RePair, category induction,
   one-shot learner). Pure Python standard library.
 - `solon_tinystories.py` — the same pipeline on ~1M words of real TinyStories.
 - `solon_morphology.py` — character-level PPM; the wug test and morphology.
-  Run `pip install tqdm` for progress bars (optional; degrades gracefully).
+- `solon_fusion.py` — the form/when fusion; context-sensitive inflection of
+  novel words. Run `pip install tqdm` for progress bars (optional).
 
 ## Scaling to real BabyLM data
 
